@@ -3,14 +3,25 @@
         "fileversion": 1,
         "appversion": {
             "major": 9,
-            "minor": 1,
-            "revision": 4,
+            "minor": 2,
+            "revision": 0,
             "architecture": "x64",
             "modernui": 1
         },
         "classnamespace": "box",
-        "rect": [ 91.0, 105.0, 691.0, 249.0 ],
+        "rect": [ 91.0, 105.0, 1065.0, 740.0 ],
         "boxes": [
+            {
+                "box": {
+                    "id": "obj-6",
+                    "maxclass": "message",
+                    "numinlets": 2,
+                    "numoutlets": 1,
+                    "outlettype": [ "" ],
+                    "patching_rect": [ 152.72726726531982, 101.59090769290924, 46.0, 22.0 ],
+                    "text": "port $1"
+                }
+            },
             {
                 "box": {
                     "id": "obj-104",
@@ -339,6 +350,7 @@
             {
                 "box": {
                     "id": "obj-83",
+                    "local": 1,
                     "maxclass": "ezdac~",
                     "numinlets": 2,
                     "numoutlets": 0,
@@ -587,7 +599,7 @@
                     "numoutlets": 1,
                     "outlettype": [ "" ],
                     "patching_rect": [ 536.1817989349365, 269.09089946746826, 253.63635456562042, 22.0 ],
-                    "text": "/pose/smooth/velocity/left_wrist"
+                    "text": "/pose/smooth/velocity/nose"
                 }
             },
             {
@@ -634,8 +646,8 @@
                         "fileversion": 1,
                         "appversion": {
                             "major": 9,
-                            "minor": 1,
-                            "revision": 4,
+                            "minor": 2,
+                            "revision": 0,
                             "architecture": "x64",
                             "modernui": 1
                         },
@@ -1428,6 +1440,9 @@
                     "numoutlets": 1,
                     "outlettype": [ "" ],
                     "patching_rect": [ 152.72726726531982, 125.0, 97.0, 22.0 ],
+                    "saved_object_attributes": {
+                        "port": 9000
+                    },
                     "text": "udpreceive 9000"
                 }
             },
@@ -1808,7 +1823,7 @@
             },
             {
                 "patchline": {
-                    "destination": [ "obj-37", 0 ],
+                    "destination": [ "obj-6", 0 ],
                     "source": [ "obj-39", 0 ]
                 }
             },
@@ -1972,6 +1987,12 @@
                 "patchline": {
                     "destination": [ "obj-39", 0 ],
                     "source": [ "obj-58", 0 ]
+                }
+            },
+            {
+                "patchline": {
+                    "destination": [ "obj-37", 0 ],
+                    "source": [ "obj-6", 0 ]
                 }
             },
             {
