@@ -72,7 +72,7 @@ For most sonification applications, start with the smoothed addresses.
 
 ## Multi-person addressing
 
-The script supports multiple simultaneous performers when using the YOLO backend
+The script supports multiple simultaneous performers when using the YOLO or RTM backends
 with `--max-persons N`. OSC addresses are prefixed per person:
 
 | Person | OSC prefix | Example |
@@ -91,11 +91,6 @@ Person 1 uses `/pose` (no number) for backward compatibility with single-person 
 >              ↑ Use --max-persons 2 (or more) for multi-person tracking
 > ```
 
-> **No persistent identity.** YOLO detects persons in order of confidence score per frame,
-> not by persistent identity. If a performer leaves and re-enters the frame, they may
-> swap between `/pose/...` and `/pose/2/...`. Patches should not rely on a specific
-> prefix always corresponding to the same physical performer across a full session.
-
 ---
 
 ## OSC addresses
@@ -105,7 +100,7 @@ Person 1 uses `/pose` (no number) for backward compatibility with single-person 
 | Address | Arguments | Types | Description |
 |---|---|---|---|
 | `/pose/status` | 1 | `i` | `1` = person detected, `0` = no person in frame |
-| `/pose/2/status` | 1 | `i` | Status for person 2 (multi-person YOLO only) |
+| `/pose/2/status` | 1 | `i` | Status for person 2 (multi-person YOLO or RTM) |
 
 ---
 
@@ -286,8 +281,6 @@ endin
 
 ```
 [udpreceive 9000]
-        |
-[oscparse]
         |
 [route /pose/smooth/wrist/right]
         |

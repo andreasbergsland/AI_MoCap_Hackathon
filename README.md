@@ -130,7 +130,7 @@ python pose_osc.py [options]
 | Argument | Default | Description |
 |---|---|---|
 | `--backend` | `mediapipe` | Tracking backend: `mediapipe`, `yolo`, or `rtm` |
-| `--model` | `full` | MediaPipe model: `lite`, `full`, `heavy` |
+| `--model` | `full` | MediaPipe/RTM model: `lite`, `full`, `heavy` |
 | `--yolo-model` | `yolov8n-pose` | YOLO model: `yolov8n-pose`, `yolov8s-pose`, `yolov8m-pose`, `yolov8l-pose` |
 | `--max-persons` | `1` | Max persons to track — **YOLO only, must set explicitly for multi-person** |
 | `--ip` | `127.0.0.1` | OSC target IP address |
