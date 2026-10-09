@@ -319,6 +319,22 @@ def is_reliable(lm):
 def midpoint(a, b):
     return (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2
 
+def pose_similarity(p1, p2):
+    """Returns a similarity score between two persons (dicts of landmarks)."""
+    if not p1 or not p2:
+        return 0.0
+    total = 0.0
+    count = 0
+    for name in p1:
+        if name in p2 and is_reliable(p1[name]) and is_reliable(p2[name]):
+            dx = p1[name].x - p2[name].x
+            dy = p1[name].y - p2[name].y
+            dz = p1[name].z - p2[name].z
+            dist_sq = dx*dx + dy*dy + dz*dz
+            total += 1.0 / (dist_sq + 1e-6)  # inverse distance squared
+            count += 1
+    return total / count if count > 0 else 0.0
+
 def osc_prefix(person_idx):
     """
     Person 0 → /pose        (backward compatible with previous patches)
@@ -470,6 +486,29 @@ try:
         persons = backend.detect(frame)
 
         if persons:
+            # if there are more than 1 person, sort them by similarity to the previous frame's persons
+            if len(persons) > 1 and prev_persons:
+                sorted_persons = []
+                used_indices = set()
+                for prev_idx, prev_p in prev_persons.items():
+                    best_idx = None
+                    best_score = -1.0
+                    for i, p in enumerate(persons):
+                        if i in used_indices:
+                            continue
+                        score = pose_similarity(prev_p, p)
+                        if score > best_score:
+                            best_score = score
+                            best_idx = i
+                    if best_idx is not None:
+                        sorted_persons.append(persons[best_idx])
+                        used_indices.add(best_idx)
+                # Add any remaining persons that were not matched
+                for i, p in enumerate(persons):
+                    if i not in used_indices:
+                        sorted_persons.append(p)
+                persons = sorted_persons
+
             for i, person in enumerate(persons):
                 send_person(person, i, now,
                             prev_persons.get(i), prev_time)
