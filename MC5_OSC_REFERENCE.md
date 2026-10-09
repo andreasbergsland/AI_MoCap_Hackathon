@@ -100,10 +100,10 @@ Mismatches are silently discarded with no error.
 | `/player/1/centerX` | `"f"` |
 | `/player/1/heightRatio` | `"f"` |
 | `/player/1/hit/overhead` | `"i"` |
-| `/player/1/hit/jump` | `"i"` |
-| `/player/1/handUp` | `"i"` |
+| `/player/1/jump` | `"i"` |
+| `/player/1/handsUp` | `"i"` |
 | `/player/1/activitySkeleton` | `"f"` |
-| `/player/1/activityTorso` | `"f"` |
+| `/player/1/activitySkeletonTorso` | `"f"` |
 | `/player/1/activityBlob` | `"f"` |
 | `/player/1/activityBlobHands` | `"f"` |
 | `/player/1/activityBlobHead` | `"f"` |
