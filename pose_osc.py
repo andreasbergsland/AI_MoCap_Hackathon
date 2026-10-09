@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 pose_osc.py — Real-time pose estimation to OSC bridge
-Supports MediaPipe (33 landmarks, CPU) and YOLO (17 landmarks, GPU) backends.
+Supports MediaPipe (33 landmarks, CPU), YOLO (17 landmarks, GPU/CPU), and RTM (17 landmarks, GPU/CPU) backends.
 NTNU Music Technology / MishMash WP3 Hackathon
 """
 
@@ -11,11 +11,37 @@ import argparse
 import os
 import urllib.request
 from pythonosc import udp_client
+import platform
+
+# ── Find Nvidia DLLs ──────────────────────────────────────────────────────────
+# a bit of monkey-patching...
+# because onnxruntime sometimes fails to find the right DLLs on Windows, especially with conda environments
+import sys
+import glob
+
+# 1. Locate the site-packages directory for the current Python environment
+site_packages_path = os.path.join(sys.prefix, "Lib", "site-packages")
+nvidia_base_path = os.path.join(site_packages_path, "nvidia")
+
+# 2. Find all 'bin' folders inside the installed nvidia packages (like cudnn)
+#    and register them to the Windows DLL search path
+if os.path.exists(nvidia_base_path):
+    for bin_dir in glob.glob(os.path.join(nvidia_base_path, "*", "bin")):
+        try:
+            os.add_dll_directory(bin_dir)
+            print(f"Success: Registered DLL path -> {bin_dir}")
+        except Exception as e:
+            print(f"Failed to add {bin_dir}: {e}")
+
+# 3. Native ONNX Runtime helper (available in newer versions)
+import onnxruntime as ort
+if hasattr(ort, 'preload_dlls'):
+    ort.preload_dlls()
 
 # ── ARGUMENT PARSING ──────────────────────────────────────────────────────────
 parser = argparse.ArgumentParser(description='Pose estimation → OSC bridge')
 parser.add_argument('--backend',     type=str,   default='mediapipe',
-                    choices=['mediapipe', 'yolo'],
+                    choices=['mediapipe', 'yolo', 'rtm'],
                     help='Tracking backend (default: mediapipe)')
 parser.add_argument('--model',       type=str,   default='full',
                     choices=['lite', 'full', 'heavy'],
@@ -25,7 +51,7 @@ parser.add_argument('--yolo-model',  type=str,   default='yolov8n-pose',
                              'yolov8m-pose', 'yolov8l-pose'],
                     help='YOLO pose model (default: yolov8n-pose)')
 parser.add_argument('--max-persons', type=int,   default=1,
-                    help='Max persons to track — YOLO only (default: 1)')
+                    help='Max persons to track — YOLO/RTM only (default: 1)')
 parser.add_argument('--alpha',       type=float, default=0.2,
                     help='Smoothing 0.0-1.0 — lower=smoother (default: 0.2)')
 parser.add_argument('--ip',          type=str,   default='127.0.0.1',
@@ -36,6 +62,8 @@ parser.add_argument('--camera',      type=int,   default=0,
                     help='Camera device index (default: 0)')
 parser.add_argument('--presence',    type=float, default=0.5,
                     help='Reliability threshold 0.0-1.0 (default: 0.5)')
+parser.add_argument('--no_draw',        action='store_true',
+                    help='Do not show camera feed with the drawn landmarks')
 args = parser.parse_args()
 
 # ── LANDMARK SCHEMAS ──────────────────────────────────────────────────────────
@@ -68,6 +96,9 @@ class Landmark:
         self.y = float(y)
         self.z = float(z)
         self.presence = float(presence)
+
+    def __repr__(self):
+        return f'Landmark(x={self.x:.3f}, y={self.y:.3f}, z={self.z:.3f}, presence={self.presence:.3f})'
 
 # ── MEDIAPIPE BACKEND ─────────────────────────────────────────────────────────
 MODEL_URLS = {
@@ -153,6 +184,72 @@ class YOLOBackend:
             persons.append(person)
         return persons
 
+# ── RTM BACKEND ──────────────────────────────────────────────────────────────
+
+model_tiers_mediapipe2rtm = {
+    'lite':  'lightweight',
+    'full':  'balanced',
+    'heavy': 'performance'
+}
+
+class RTMBackend:
+    def __init__(self, model_name: str = "full", presence_threshold: float = 0.5, max_persons: int = 1):
+        # only NOW import the rtmlib modules, after the DLLs are registered
+        from rtmlib import Body, PoseTracker
+        import numpy as np
+        import onnxruntime as ort
+        print(f'onnxruntime version: {ort.__version__}, available providers: {ort.get_available_providers()}')
+
+        self.names = COCO_LANDMARKS
+        self.threshold = presence_threshold
+        self.max_persons = max_persons
+
+        self.model = PoseTracker(
+            Body,
+            det_frequency=1,
+            backend='onnxruntime',
+            device='cuda' if ort.get_device() == 'GPU' else 'cpu',
+            to_openpose=False,
+            tracking=False,
+            mode=model_tiers_mediapipe2rtm[model_name]
+        )
+
+        det_providers = self.model.det_model.session.get_providers()
+        print(f'detection model providers: {det_providers}')
+
+        pose_providers = self.model.pose_model.session.get_providers()
+        print(f'pose model providers: {pose_providers}')
+
+    def detect(self, frame):
+        """Returns list of person dicts: {landmark_name: Landmark}"""
+
+        keypoints, scores = None, None # keypoints is (n, 17, 2), scores is (n, 17)
+        results = self.model(frame)
+        if results is None:
+            return []
+        elif len(results) == 2:
+            keypoints, scores = results
+            if keypoints is None or len(keypoints) == 0:
+                return []
+        else:
+            raise ValueError(f"Unexpected number of results: {len(results)}")
+
+        n_detected = keypoints.shape[0]
+        persons = []
+        n = min(n_detected, self.max_persons)
+
+        frame_height, frame_width = frame.shape[:2]
+
+        for p in range(n):
+            person = {}
+            for i, name in enumerate(COCO_LANDMARKS):
+                x = float(keypoints[p, i, 0]) / frame_width
+                y = float(keypoints[p, i, 1]) / frame_height
+                c = float(scores[p, i]) if scores is not None else 1.0
+                person[name] = Landmark(x, y, 0.0, c)
+            persons.append(person)
+        return persons
+
 # ── PER-PERSON EMA SMOOTHER ───────────────────────────────────────────────────
 class Smoother:
     def __init__(self, alpha):
@@ -189,9 +286,14 @@ osc = udp_client.SimpleUDPClient(args.ip, args.port)
 if args.backend == 'mediapipe':
     backend       = MediaPipeBackend(args.model, args.presence)
     backend_label = f'mediapipe-{args.model}'
-else:
+elif args.backend == 'yolo':
     backend       = YOLOBackend(args.yolo_model, args.presence, args.max_persons)
     backend_label = args.yolo_model
+elif args.backend == 'rtm':
+    backend = RTMBackend(args.model, args.presence, args.max_persons)
+    backend_label = 'rtm'
+else:
+    raise ValueError(f'Unknown backend: {args.backend}')
 
 smoother      = Smoother(args.alpha)
 prev_persons  = {}   # person_idx -> {name: Landmark}
@@ -224,6 +326,22 @@ def is_reliable(lm):
 
 def midpoint(a, b):
     return (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2
+
+def pose_similarity(p1, p2):
+    """Returns a similarity score between two persons (dicts of landmarks)."""
+    if not p1 or not p2:
+        return 0.0
+    total = 0.0
+    count = 0
+    for name in p1:
+        if name in p2 and is_reliable(p1[name]) and is_reliable(p2[name]):
+            dx = p1[name].x - p2[name].x
+            dy = p1[name].y - p2[name].y
+            dz = p1[name].z - p2[name].z
+            dist_sq = dx*dx + dy*dy + dz*dz
+            total += 1.0 / (dist_sq + 1e-6)  # inverse distance squared
+            count += 1
+    return total / count if count > 0 else 0.0
 
 def osc_prefix(person_idx):
     """
@@ -360,60 +478,95 @@ def print_summary(persons):
     print()
 
 # ── MAIN LOOP ─────────────────────────────────────────────────────────────────
-while cap.isOpened():
-    t0 = time.perf_counter()
+# avoid hanging windows on Mac OS
+if platform.system() == "Darwin" and not args.no_draw:
+    cv2.startWindowThread()
 
-    ret, frame = cap.read()
-    if not ret:
-        break
+try:
+    while cap.isOpened():
+        t0 = time.perf_counter()
 
-    now     = time.perf_counter()
-    persons = backend.detect(frame)
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-    if persons:
-        for i, person in enumerate(persons):
-            send_person(person, i, now,
-                        prev_persons.get(i), prev_time)
-            draw_person(frame, person, i)
+        now     = time.perf_counter()
+        persons = backend.detect(frame)
 
-        # update state
-        prev_persons = {i: p for i, p in enumerate(persons)}
-        prev_time    = now
+        if persons:
+            # if there are more than 1 person, sort them by similarity to the previous frame's persons
+            if len(persons) > 1 and prev_persons:
+                sorted_persons = []
+                used_indices = set()
+                for prev_idx, prev_p in prev_persons.items():
+                    best_idx = None
+                    best_score = -1.0
+                    for i, p in enumerate(persons):
+                        if i in used_indices:
+                            continue
+                        score = pose_similarity(prev_p, p)
+                        if score > best_score:
+                            best_score = score
+                            best_idx = i
+                    if best_idx is not None:
+                        sorted_persons.append(persons[best_idx])
+                        used_indices.add(best_idx)
+                # Add any remaining persons that were not matched
+                for i, p in enumerate(persons):
+                    if i not in used_indices:
+                        sorted_persons.append(p)
+                persons = sorted_persons
 
-        # clear smoother state for persons no longer detected
-        active = set(range(len(persons)))
-        stale  = {k[0] for k in list(smoother._state)
-                  if k[0] not in active}
-        for p in stale:
-            smoother.clear_person(p)
+            for i, person in enumerate(persons):
+                send_person(person, i, now,
+                            prev_persons.get(i), prev_time)
+                if not args.no_draw:
+                    draw_person(frame, person, i)
 
-        # periodic summary
-        if now - last_summary >= SUMMARY_SECS:
-            print_summary(persons)
-            last_summary = now
+            # update state
+            prev_persons = {i: p for i, p in enumerate(persons)}
+            prev_time    = now
 
-    else:
-        osc.send_message('/pose/status', 0)
-        prev_persons.clear()
-        prev_time = None
-        smoother.clear_all()
+            # clear smoother state for persons no longer detected
+            active = set(range(len(persons)))
+            stale  = {k[0] for k in list(smoother._state)
+                    if k[0] not in active}
+            for p in stale:
+                smoother.clear_person(p)
 
-    # timing display
-    t1 = time.perf_counter()
-    frame_times.append(t1 - t0)
-    if len(frame_times) > 30:
-        avg = sum(frame_times[-30:]) / 30
-        n   = len(persons) if persons else 0
-        print(
-            f'Avg: {avg*1000:.1f}ms | {backend_label} | '
-            f'alpha={args.alpha} | persons={n} | '
-            f'OSC->{args.ip}:{args.port}   ',
-            end='\r'
-        )
+            # periodic summary
+            if now - last_summary >= SUMMARY_SECS:
+                print_summary(persons)
+                last_summary = now
 
-    cv2.imshow('Pose', frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        else:
+            osc.send_message('/pose/status', 0)
+            prev_persons.clear()
+            prev_time = None
+            smoother.clear_all()
 
-cap.release()
-cv2.destroyAllWindows()
+        # timing display
+        t1 = time.perf_counter()
+        frame_times.append(t1 - t0)
+        if len(frame_times) > 30:
+            avg = sum(frame_times[-30:]) / 30
+            n   = len(persons) if persons else 0
+            print(
+                f'Avg: {avg*1000:.1f}ms | {backend_label} | '
+                f'alpha={args.alpha} | persons={n} | '
+                f'OSC->{args.ip}:{args.port}   ',
+                end='\r'
+            )
+
+        if not args.no_draw:
+            # mirror left-right
+            frame = cv2.flip(frame, 1)
+            cv2.imshow('Pose', frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+except KeyboardInterrupt:
+    print('\nKeyboard interrupt received. Exiting...')
+finally:
+    cap.release()
+    cv2.destroyAllWindows()
+    cv2.waitKey(1)  # for Mac OS
