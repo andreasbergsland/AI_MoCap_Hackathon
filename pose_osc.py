@@ -11,6 +11,7 @@ import argparse
 import os
 import urllib.request
 from pythonosc import udp_client
+import platform
 
 # ── ARGUMENT PARSING ──────────────────────────────────────────────────────────
 parser = argparse.ArgumentParser(description='Pose estimation → OSC bridge')
@@ -360,60 +361,68 @@ def print_summary(persons):
     print()
 
 # ── MAIN LOOP ─────────────────────────────────────────────────────────────────
-while cap.isOpened():
-    t0 = time.perf_counter()
+# avoid hanging windows on Mac OS
+if platform.system() == "Darwin":
+    cv2.startWindowThread()
 
-    ret, frame = cap.read()
-    if not ret:
-        break
+try:
+    while cap.isOpened():
+        t0 = time.perf_counter()
 
-    now     = time.perf_counter()
-    persons = backend.detect(frame)
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-    if persons:
-        for i, person in enumerate(persons):
-            send_person(person, i, now,
-                        prev_persons.get(i), prev_time)
-            draw_person(frame, person, i)
+        now     = time.perf_counter()
+        persons = backend.detect(frame)
 
-        # update state
-        prev_persons = {i: p for i, p in enumerate(persons)}
-        prev_time    = now
+        if persons:
+            for i, person in enumerate(persons):
+                send_person(person, i, now,
+                            prev_persons.get(i), prev_time)
+                draw_person(frame, person, i)
 
-        # clear smoother state for persons no longer detected
-        active = set(range(len(persons)))
-        stale  = {k[0] for k in list(smoother._state)
-                  if k[0] not in active}
-        for p in stale:
-            smoother.clear_person(p)
+            # update state
+            prev_persons = {i: p for i, p in enumerate(persons)}
+            prev_time    = now
 
-        # periodic summary
-        if now - last_summary >= SUMMARY_SECS:
-            print_summary(persons)
-            last_summary = now
+            # clear smoother state for persons no longer detected
+            active = set(range(len(persons)))
+            stale  = {k[0] for k in list(smoother._state)
+                    if k[0] not in active}
+            for p in stale:
+                smoother.clear_person(p)
 
-    else:
-        osc.send_message('/pose/status', 0)
-        prev_persons.clear()
-        prev_time = None
-        smoother.clear_all()
+            # periodic summary
+            if now - last_summary >= SUMMARY_SECS:
+                print_summary(persons)
+                last_summary = now
 
-    # timing display
-    t1 = time.perf_counter()
-    frame_times.append(t1 - t0)
-    if len(frame_times) > 30:
-        avg = sum(frame_times[-30:]) / 30
-        n   = len(persons) if persons else 0
-        print(
-            f'Avg: {avg*1000:.1f}ms | {backend_label} | '
-            f'alpha={args.alpha} | persons={n} | '
-            f'OSC->{args.ip}:{args.port}   ',
-            end='\r'
-        )
+        else:
+            osc.send_message('/pose/status', 0)
+            prev_persons.clear()
+            prev_time = None
+            smoother.clear_all()
 
-    cv2.imshow('Pose', frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        # timing display
+        t1 = time.perf_counter()
+        frame_times.append(t1 - t0)
+        if len(frame_times) > 30:
+            avg = sum(frame_times[-30:]) / 30
+            n   = len(persons) if persons else 0
+            print(
+                f'Avg: {avg*1000:.1f}ms | {backend_label} | '
+                f'alpha={args.alpha} | persons={n} | '
+                f'OSC->{args.ip}:{args.port}   ',
+                end='\r'
+            )
 
-cap.release()
-cv2.destroyAllWindows()
+        cv2.imshow('Pose', frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+except KeyboardInterrupt:
+    print('\nKeyboard interrupt received. Exiting...')
+finally:
+    cap.release()
+    cv2.destroyAllWindows()
+    cv2.waitKey(1)  # for Mac OS
