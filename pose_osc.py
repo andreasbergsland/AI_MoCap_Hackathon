@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 pose_osc.py — Real-time pose estimation to OSC bridge
-Supports MediaPipe (33 landmarks, CPU) and YOLO (17 landmarks, GPU) backends.
+Supports MediaPipe (33 landmarks, CPU), YOLO (17 landmarks, GPU/CPU), and RTM (17 landmarks, GPU/CPU) backends.
 NTNU Music Technology / MishMash WP3 Hackathon
 """
 
@@ -13,10 +13,35 @@ import urllib.request
 from pythonosc import udp_client
 import platform
 
+# ── Find Nvidia DLLs ──────────────────────────────────────────────────────────
+# a bit of monkey-patching...
+# because onnxruntime sometimes fails to find the right DLLs on Windows, especially with conda environments
+import sys
+import glob
+
+# 1. Locate the site-packages directory for the current Python environment
+site_packages_path = os.path.join(sys.prefix, "Lib", "site-packages")
+nvidia_base_path = os.path.join(site_packages_path, "nvidia")
+
+# 2. Find all 'bin' folders inside the installed nvidia packages (like cudnn)
+#    and register them to the Windows DLL search path
+if os.path.exists(nvidia_base_path):
+    for bin_dir in glob.glob(os.path.join(nvidia_base_path, "*", "bin")):
+        try:
+            os.add_dll_directory(bin_dir)
+            print(f"Success: Registered DLL path -> {bin_dir}")
+        except Exception as e:
+            print(f"Failed to add {bin_dir}: {e}")
+
+# 3. Native ONNX Runtime helper (available in newer versions)
+import onnxruntime as ort
+if hasattr(ort, 'preload_dlls'):
+    ort.preload_dlls()
+
 # ── ARGUMENT PARSING ──────────────────────────────────────────────────────────
 parser = argparse.ArgumentParser(description='Pose estimation → OSC bridge')
 parser.add_argument('--backend',     type=str,   default='mediapipe',
-                    choices=['mediapipe', 'yolo'],
+                    choices=['mediapipe', 'yolo', 'rtm'],
                     help='Tracking backend (default: mediapipe)')
 parser.add_argument('--model',       type=str,   default='full',
                     choices=['lite', 'full', 'heavy'],
@@ -26,7 +51,7 @@ parser.add_argument('--yolo-model',  type=str,   default='yolov8n-pose',
                              'yolov8m-pose', 'yolov8l-pose'],
                     help='YOLO pose model (default: yolov8n-pose)')
 parser.add_argument('--max-persons', type=int,   default=1,
-                    help='Max persons to track — YOLO only (default: 1)')
+                    help='Max persons to track — YOLO/RTM only (default: 1)')
 parser.add_argument('--alpha',       type=float, default=0.2,
                     help='Smoothing 0.0-1.0 — lower=smoother (default: 0.2)')
 parser.add_argument('--ip',          type=str,   default='127.0.0.1',
@@ -71,6 +96,9 @@ class Landmark:
         self.y = float(y)
         self.z = float(z)
         self.presence = float(presence)
+
+    def __repr__(self):
+        return f'Landmark(x={self.x:.3f}, y={self.y:.3f}, z={self.z:.3f}, presence={self.presence:.3f})'
 
 # ── MEDIAPIPE BACKEND ─────────────────────────────────────────────────────────
 MODEL_URLS = {
@@ -156,6 +184,64 @@ class YOLOBackend:
             persons.append(person)
         return persons
 
+# ── RTM BACKEND ──────────────────────────────────────────────────────────────
+class RTMBackend:
+    def __init__(self, presence_threshold: float = 0.5, max_persons: int = 1):
+        # only NOW import the rtmlib modules, after the DLLs are registered
+        from rtmlib import Body, PoseTracker
+        import numpy as np
+        import onnxruntime as ort
+        print(f'onnxruntime version: {ort.__version__}, available providers: {ort.get_available_providers()}')
+
+        self.names = COCO_LANDMARKS
+        self.threshold = presence_threshold
+        self.max_persons = max_persons
+
+        self.model = PoseTracker(
+            Body,
+            det_frequency=1,
+            backend='onnxruntime',
+            device='cuda' if ort.get_device() == 'GPU' else 'cpu',
+            to_openpose=False,
+            tracking=False
+        )
+
+        det_providers = self.model.det_model.session.get_providers()
+        print(f'detection model providers: {det_providers}')
+
+        pose_providers = self.model.pose_model.session.get_providers()
+        print(f'pose model providers: {pose_providers}')
+
+    def detect(self, frame):
+        """Returns list of person dicts: {landmark_name: Landmark}"""
+
+        keypoints, scores = None, None # keypoints is (n, 17, 2), scores is (n, 17)
+        results = self.model(frame)
+        if results is None:
+            return []
+        elif len(results) == 2:
+            keypoints, scores = results
+            if keypoints is None or len(keypoints) == 0:
+                return []
+        else:
+            raise ValueError(f"Unexpected number of results: {len(results)}")
+
+        n_detected = keypoints.shape[0]
+        persons = []
+        n = min(n_detected, self.max_persons)
+
+        frame_height, frame_width = frame.shape[:2]
+
+        for p in range(n):
+            person = {}
+            for i, name in enumerate(COCO_LANDMARKS):
+                x = float(keypoints[p, i, 0]) / frame_width
+                y = float(keypoints[p, i, 1]) / frame_height
+                c = float(scores[p, i]) if scores is not None else 1.0
+                person[name] = Landmark(x, y, 0.0, c)
+            persons.append(person)
+        return persons
+
 # ── PER-PERSON EMA SMOOTHER ───────────────────────────────────────────────────
 class Smoother:
     def __init__(self, alpha):
@@ -192,9 +278,14 @@ osc = udp_client.SimpleUDPClient(args.ip, args.port)
 if args.backend == 'mediapipe':
     backend       = MediaPipeBackend(args.model, args.presence)
     backend_label = f'mediapipe-{args.model}'
-else:
+elif args.backend == 'yolo':
     backend       = YOLOBackend(args.yolo_model, args.presence, args.max_persons)
     backend_label = args.yolo_model
+elif args.backend == 'rtm':
+    backend = RTMBackend(args.presence, args.max_persons)
+    backend_label = 'rtm'
+else:
+    raise ValueError(f'Unknown backend: {args.backend}')
 
 smoother      = Smoother(args.alpha)
 prev_persons  = {}   # person_idx -> {name: Landmark}
