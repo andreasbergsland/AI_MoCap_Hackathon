@@ -29,9 +29,10 @@ The script supports two tracking backends, selectable via `--backend`:
 |---|---|---|---|---|
 | MediaPipe (default) | `--backend mediapipe` | 33 (full body + face + hand detail) | ~30ms | CPU |
 | YOLO | `--backend yolo` | 17 (COCO skeleton) | ~5–20ms | GPU (NVIDIA) |
+| RTM | `--backend rtm` | 17 (COCO skeleton) | ? | GPU (NVIDIA) |
 
-Both backends send OSC on the **same addresses** using the same format.
-When using YOLO, the 16 MediaPipe-only landmarks (inner/outer eye detail, pinky, index,
+All backends send OSC on the **same addresses** using the same format.
+When using YOLO or RTM, the 16 MediaPipe-only landmarks (inner/outer eye detail, pinky, index,
 thumb, heel, foot index) are simply absent from the stream — all other addresses work
 identically. Patches built for one backend work with the other without modification,
 as long as they don't rely on MediaPipe-only landmarks.

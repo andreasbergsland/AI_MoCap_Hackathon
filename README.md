@@ -4,8 +4,8 @@ Real-time human pose estimation to OSC bridge, built for the **Movement & Music 
 organised by NTNU Music Technology and MishMash WP3 (AI & Creativity for Health and Wellbeing),
 Trondheim, October 2025.
 
-The script uses [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker)
-or [YOLO](https://docs.ultralytics.com/tasks/pose/) to detect body landmarks from a standard
+The script uses [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker),
+[YOLO](https://docs.ultralytics.com/tasks/pose/), or [RTM](https://github.com/Tau-J/rtmlib) to detect body landmarks from a standard
 camera feed and streams them as OSC messages to any audio or creative coding environment —
 Csound, Max/MSP, Pure Data, SuperCollider, or similar.
 
@@ -15,11 +15,11 @@ Csound, Max/MSP, Pure Data, SuperCollider, or similar.
 
 | System | Machine | OSC address | Port |
 |---|---|---|---|
-| **pose_osc.py** (MediaPipe or YOLO) | NTNU PC | configurable | 9000 (default) |
+| **pose_osc.py** (MediaPipe, YOLO, or RTM) | NTNU PC | configurable | 9000 (default) |
 | **MotionComposer MC-5** (Robert Wechsler) | Robert's machine | `192.168.2.207` | `61` |
-| **Third system** (UiO / TBC) | TBC | TBC | TBC |
+| **pose_osc.py** (MediaPipe, YOLO, or RTM) | UiO PC | configurable | 9000 (default) |
 
-See [OSC_REFERENCE.md](OSC_REFERENCE.md) for the NTNU pipeline address list.
+See [OSC_REFERENCE.md](OSC_REFERENCE.md) for the NTNU/UiO pipeline address list.
 See [MC5_OSC_REFERENCE.md](MC5_OSC_REFERENCE.md) for Robert's MC-5 address list.
 
 ---
@@ -39,7 +39,7 @@ Full-body landmarks (hips, knees, ankles) require the whole body visible in fram
 Upper-body landmarks (shoulders, elbows, wrists) work reliably at closer range.
 
 **GPU laptops:** Any NVIDIA GPU with 4GB+ VRAM (GTX 1650 or newer, any RTX) will
-accelerate YOLO inference to ~10–20ms. Without a GPU, MediaPipe runs on CPU at ~30–70ms
+accelerate YOLO nad RTM inference to ~10–20ms. Without a GPU, MediaPipe runs on CPU at ~30–70ms
 depending on the machine — workable for continuous parameter sonification.
 Apple Silicon Macs (M1/M2/M3) are also supported via the MPS backend.
 
@@ -58,6 +58,7 @@ machines to prevent the network link dropping during a session.
 - torch >= 2.14.0
 - python-osc >= 1.10.0
 - ultralytics >= 8.4
+- rtmlib >= 0.0.16
 
 ---
 
@@ -98,7 +99,7 @@ pip install torch torchvision
 ### 5. Install remaining dependencies
 
 ```bash
-pip install mediapipe opencv-python python-osc ultralytics
+pip install mediapipe opencv-python python-osc ultralytics rtmlib
 ```
 
 ### 6. Verify the installation
@@ -128,7 +129,7 @@ python pose_osc.py [options]
 
 | Argument | Default | Description |
 |---|---|---|
-| `--backend` | `mediapipe` | Tracking backend: `mediapipe` or `yolo` |
+| `--backend` | `mediapipe` | Tracking backend: `mediapipe`, `yolo`, or `rtm` |
 | `--model` | `full` | MediaPipe model: `lite`, `full`, `heavy` |
 | `--yolo-model` | `yolov8n-pose` | YOLO model: `yolov8n-pose`, `yolov8s-pose`, `yolov8m-pose`, `yolov8l-pose` |
 | `--max-persons` | `1` | Max persons to track — **YOLO only, must set explicitly for multi-person** |
@@ -137,6 +138,7 @@ python pose_osc.py [options]
 | `--alpha` | `0.2` | Smoothing: 0.0 = maximum smoothing, 1.0 = no smoothing |
 | `--presence` | `0.5` | Reliability threshold for landmarks |
 | `--camera` | `0` | Camera device index |
+| `--no_draw` | N/A | Flad to disable drawing |
 
 ### Examples
 
@@ -170,7 +172,7 @@ python pose_osc.py --help
 
 ## Backends compared
 
-| Feature | MediaPipe | YOLO |
+| Feature | MediaPipe | YOLO/RTM |
 |---|---|---|
 | Landmarks | 33 (full body + face + hand detail) | 17 (COCO skeleton) |
 | Inference | ~30ms on CPU | ~5–20ms on GPU |
@@ -184,7 +186,7 @@ OSC addresses are identical between backends — patches work with both.
 
 ## Multi-person tracking
 
-Multi-person tracking is available with the YOLO backend only. It is **off by default** —
+Multi-person tracking is available with the YOLO and RTM backends. It is **off by default** —
 you must pass `--max-persons 2` (or higher) explicitly:
 
 ```bash
@@ -199,7 +201,7 @@ Max persons: 1
              ↑ Use --max-persons 2 (or more) for multi-person tracking
 ```
 
-**Important — no persistent identity:** YOLO detects persons in order of confidence score
+**Important — no persistent identity:** YOLO/RTM detects persons in order of confidence score
 per frame, not by persistent identity. This means if one performer walks out of frame and
 back in, they may swap between `/pose/...` and `/pose/2/...`. For the hackathon this is
 generally fine, but participants should be aware that person numbering is not guaranteed
