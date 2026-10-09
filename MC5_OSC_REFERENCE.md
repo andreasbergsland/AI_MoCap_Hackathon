@@ -160,7 +160,7 @@ endin
 | Gestures | Overhead hit, jump, handUp | Not implemented |
 | Smoothing | Built into device | Configurable via --alpha |
 | Multi-person | Single person only (first detected) | Up to N persons via --max-persons |
-| IP / Port | 192.168.2.207 / 61 | Configurable, default 127.0.0.1:9000 |
+| IP / Port | 192.168.2.220 / 6160 or 6162 |
 
 The MC-5 gives you high-level, pre-designed features ready to map directly to sound —
 closer to the original MotionComposer philosophy. The NTNU pipeline gives raw skeleton
