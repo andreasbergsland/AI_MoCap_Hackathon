@@ -185,8 +185,15 @@ class YOLOBackend:
         return persons
 
 # ── RTM BACKEND ──────────────────────────────────────────────────────────────
+
+model_tiers_mediapipe2rtm = {
+    'lite':  'lightweight',
+    'full':  'balanced',
+    'heavy': 'performance'
+}
+
 class RTMBackend:
-    def __init__(self, presence_threshold: float = 0.5, max_persons: int = 1):
+    def __init__(self, model_name: str = "full", presence_threshold: float = 0.5, max_persons: int = 1):
         # only NOW import the rtmlib modules, after the DLLs are registered
         from rtmlib import Body, PoseTracker
         import numpy as np
@@ -203,7 +210,8 @@ class RTMBackend:
             backend='onnxruntime',
             device='cuda' if ort.get_device() == 'GPU' else 'cpu',
             to_openpose=False,
-            tracking=False
+            tracking=False,
+            mode=model_tiers_mediapipe2rtm[model_name]
         )
 
         det_providers = self.model.det_model.session.get_providers()
@@ -282,7 +290,7 @@ elif args.backend == 'yolo':
     backend       = YOLOBackend(args.yolo_model, args.presence, args.max_persons)
     backend_label = args.yolo_model
 elif args.backend == 'rtm':
-    backend = RTMBackend(args.presence, args.max_persons)
+    backend = RTMBackend(args.model, args.presence, args.max_persons)
     backend_label = 'rtm'
 else:
     raise ValueError(f'Unknown backend: {args.backend}')
