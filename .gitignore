@@ -1,3 +1,8 @@
 .vscode/*
 *.task
 *.pt
+cuda_test.py
+keypoints_wholebody3d.txt
+rtm_tester.py
+wholebody_receiver_test.maxpat
+.DS_Store
