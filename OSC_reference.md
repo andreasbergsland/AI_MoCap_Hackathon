@@ -242,6 +242,10 @@ Typical values: slow movement ~0.1–0.5, fast gesture ~2.0–6.0.
 
 ---
 
+## Drawing
+
+By default the scripts opens a separate window that visualizes the detected keypoints drawn onto the camera feed. However, to save resources, you can also disable drawing with the `--no_draw` flag.
+
 ## Receiving OSC — quick examples
 
 ### Csound

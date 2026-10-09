@@ -37,6 +37,8 @@ parser.add_argument('--camera',      type=int,   default=0,
                     help='Camera device index (default: 0)')
 parser.add_argument('--presence',    type=float, default=0.5,
                     help='Reliability threshold 0.0-1.0 (default: 0.5)')
+parser.add_argument('--no_draw',        action='store_true',
+                    help='Do not show camera feed with the drawn landmarks')
 args = parser.parse_args()
 
 # ── LANDMARK SCHEMAS ──────────────────────────────────────────────────────────
@@ -362,7 +364,7 @@ def print_summary(persons):
 
 # ── MAIN LOOP ─────────────────────────────────────────────────────────────────
 # avoid hanging windows on Mac OS
-if platform.system() == "Darwin":
+if platform.system() == "Darwin" and not args.no_draw:
     cv2.startWindowThread()
 
 try:
@@ -380,7 +382,8 @@ try:
             for i, person in enumerate(persons):
                 send_person(person, i, now,
                             prev_persons.get(i), prev_time)
-                draw_person(frame, person, i)
+                if not args.no_draw:
+                    draw_person(frame, person, i)
 
             # update state
             prev_persons = {i: p for i, p in enumerate(persons)}
@@ -417,9 +420,10 @@ try:
                 end='\r'
             )
 
-        cv2.imshow('Pose', frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        if not args.no_draw:
+            cv2.imshow('Pose', frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 except KeyboardInterrupt:
     print('\nKeyboard interrupt received. Exiting...')
 finally:
