@@ -24,7 +24,7 @@ if hasattr(ort, 'preload_dlls'):
 
 
 # %%
-from rtmlib import Body, Wholebody3d, PoseTracker, draw_skeleton
+from rtmlib import Body, Wholebody, Wholebody3d, PoseTracker, draw_skeleton
 import cv2
 import platform
 import numpy as np
@@ -40,7 +40,7 @@ backend = 'onnxruntime'
 openpose_skeleton = False
 
 pose_tracker = PoseTracker(
-    Wholebody3d, 
+    Body, #Wholebody, #3d, 
     det_frequency=1, 
     backend=backend, 
     device=device,
@@ -58,7 +58,7 @@ print(f'pose model providers: {pose_providers}')
 # %%
 # osc setup
 # Replace with the local IP address of your Max machine
-TARGET_IP = "192.168.1.50" 
+# TARGET_IP = "192.168.1.50" 
 TARGET_IP = "127.0.0.1"  # For testing on the same machine
 TARGET_PORT = 9000
 
@@ -84,9 +84,10 @@ def send_frame(keypoints_133x3: np.ndarray):
 cap = cv2.VideoCapture(0)  # for video file instead of webcam, use cap = cv2.VideoCapture('./demo.mp4')
 
 frame_idx = 0
+draw = True
 try:
     # avoid hanging windows on Mac OS
-    if platform.system() == "Darwin":
+    if platform.system() == "Darwin" and draw:
         cv2.startWindowThread()
     while cap.isOpened():
         success, frame = cap.read()
@@ -109,21 +110,23 @@ try:
                 keypoints, scores = results
             else:
                 print(f"Unexpected number of results: {len(results)}")
-        # keypoints, scores = pose_tracker(frame)
 
-        if keypoints is not None and len(keypoints) > 0:
-            send_frame(keypoints[0])
-            client.send_message("/pose/scores", scores[0].flatten().tolist())
+        # if keypoints is not None and len(keypoints) > 0:
+        #     send_frame(keypoints[0])
+        #     client.send_message("/pose/scores", scores[0].flatten().tolist())
 
-        # img_show = frame.copy()
-        # if keypoints_2d is not None:
-        #     img_show = draw_skeleton(img_show,
-        #                             keypoints_2d,
-        #                             scores,
-        #                             openpose_skeleton=openpose_skeleton,
-        #                             kpt_thr=0.5)
-        # cv2.imshow('img', img_show)
-        # cv2.waitKey(10)
+        if draw:
+            img_show = frame.copy()
+            _keypoints = keypoints if len(results) == 2 else keypoints_2d
+            if _keypoints is not None:
+                img_show = draw_skeleton(img_show,
+                                        _keypoints,
+                                        scores,
+                                        openpose_skeleton=openpose_skeleton,
+                                        kpt_thr=0.5)
+            cv2.imshow('img', img_show)
+            cv2.waitKey(10)
+
 except KeyboardInterrupt:
     pass
 finally:
@@ -133,6 +136,5 @@ finally:
 
 # %%
 print(f'keypoints shape: {keypoints.shape}, scores shape: {scores.shape}, keypoints_simcc shape: {keypoints_simcc.shape}, keypoints_2d shape: {keypoints_2d.shape}')
-
 
 # %%
