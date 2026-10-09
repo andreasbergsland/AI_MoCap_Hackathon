@@ -4,7 +4,7 @@ This document describes the OSC messages sent by Robert Wechsler's **MotionCompo
 a prototype YOLO + segmentation-based motion tracking device brought to the hackathon.
 
 The MC-5 is a separate system from the NTNU `pose_osc.py` pipeline. It runs on its own
-machine and sends its own OSC stream. Both systems can run simultaneously.
+machine and sends its own OSC stream. This system will be used by one of the groups at the hackathon.
 
 ---
 
@@ -13,8 +13,8 @@ machine and sends its own OSC stream. Both systems can run simultaneously.
 | Setting | Value |
 |---|---|
 | Protocol | UDP |
-| IP address | `192.168.2.207` |
-| Port | `61` |
+| IP address | `192.168.2.220` |
+| Port | `6160` or `6162` |
 
 ---
 
@@ -62,8 +62,8 @@ Always check this before using other values — use it to mute your patch when n
 | Address | Value | Type | Description | Paradigm |
 |---|---|---|---|---|
 | `/player/1/hit/overhead` | 1 | `i` | Any quick upward movement of either hand above the head | Gesture |
-| `/player/1/hit/jump` | 1 | `i` | A jump, or the body moving upward quickly | Gesture |
-| `/player/1/handUp` | 0 or 1 | `i` | A hand is raised above the head *(possible — confirm with Robert on the day)* | Gesture |
+| `/player/1/jump` | 1 | `i` | A jump, or the body moving upward quickly | Gesture |
+| `/player/1/handsUp` | 0 or 1 | `i` | A hand is raised above the head *(possible — confirm with Robert on the day)* | Gesture |
 
 ---
 
@@ -78,7 +78,7 @@ Five activity streams derived from different parts of the body and different tra
 | Address | Range | Type | Description | Method |
 |---|---|---|---|---|
 | `/player/1/activitySkeleton` | 0.0 – 1.0 | `f` | Amount of movement across all skeleton points added together | YOLO skeleton |
-| `/player/1/activityTorso` | 0.0 – 1.0 | `f` | As above, but ignoring arms and legs — torso movement only | YOLO skeleton |
+| `/player/1/activitySkeletonTorso` | 0.0 – 1.0 | `f` | As above, but ignoring arms and legs — torso movement only | YOLO skeleton |
 | `/player/1/activityBlob` | 0.0 – 1.0 | `f` | Movement in a zone around the whole skeleton — background subtraction (not YOLO) | Segmentation |
 | `/player/1/activityBlobHands` | 0.0 – 1.0 | `f` | Movement in a zone around the hands — captures finger movement | Segmentation |
 | `/player/1/activityBlobHead` | 0.0 – 1.0 | `f` | Movement in a zone around the head — captures lip, eye and facial movement | Segmentation |
@@ -146,17 +146,6 @@ endin
 
 ---
 
-## Max/MSP example
-
-```
-[udpreceive 61]
-      |
-[oscparse]
-      |
-[route /player/1/centerX /player/1/activitySkeleton /player/1/hit/overhead]
-  |           |                    |
-[unpack f] [unpack f]          [unpack i]
-```
 
 ---
 
