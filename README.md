@@ -16,7 +16,7 @@ Csound, Max/MSP, Pure Data, SuperCollider, or similar.
 | System | Machine | OSC address | Port |
 |---|---|---|---|
 | **pose_osc.py** (MediaPipe, YOLO, or RTM) | NTNU PC | configurable | 9000 (default) |
-| **MotionComposer MC-5** (Robert Wechsler) | Robert's machine | `192.168.2.207` | `61` |
+| **MotionComposer MC-5** (Robert Wechsler) | Robert's machine | `192.168.2.220` | `6160` or `6162` |
 | **pose_osc.py** (MediaPipe, YOLO, or RTM) | UiO PC | configurable | 9000 (default) |
 
 See [OSC_REFERENCE.md](OSC_REFERENCE.md) for the NTNU/UiO pipeline address list.
@@ -44,7 +44,7 @@ depending on the machine — workable for continuous parameter sonification.
 Apple Silicon Macs (M1/M2/M3) are also supported via the MPS backend.
 
 **Two-machine setup:** connect via ethernet with static IPs on the same subnet
-(e.g. `192.168.1.3` PC, `192.168.1.2` Mac). Set Sleep and Screen to Never on both
+(e.g. `192.168.50.3` PC, `192.168.50.2` Mac). Set Sleep and Screen to Never on both
 machines to prevent the network link dropping during a session.
 
 ---
